@@ -330,3 +330,84 @@ Your understanding is **100% verified** by the lesson transcript:
 * **The Second Feature of `Command` (Control Flow)**: The `Command` object does not just update state fields. It also controls graph routing dynamically. You can pass a `goto` parameter (e.g. `goto="node_name"`) inside the `Command` object to dynamically bypass the next node or route the execution loop based on tool results.
 * **`remaining_steps` Parameter**: The default `AgentState` includes a hidden `remaining_steps` parameter. It tracks the step limit (initialized by the `recursion_limit` parameter in graph config) to prevent infinite routing loops and stack overflows in recursive tool execution.
 * **Parallel Execution Handling**: If an agent makes parallel tool calls, they run concurrently. The reducer function must be thread-safe/idempotent to handle simultaneous state updates correctly without data races.
+
+---
+
+### 📌 Deep Dive 9: Module 3, Lesson 1 — The Stateful ToDo Planner Pattern
+
+#### 1. Why Do We Need Planning/ToDos?
+
+* **Context Control**: Long-horizon agents call many tools (e.g., Manus calls ~50 tools). Without a plan, the model drifts because of attention decay.
+* **Steering**: Storing the plan in the graph state (rather than just conversation messages) makes the plan persistent and structured.
+
+#### 2. Key Architectural Components
+
+* **Custom State Schema (`DeepAgentState`)**:
+  * Inherits from `AgentState` (`messages`, `remaining_steps`).
+  * Adds `todos` (a list of task dictionaries: `{content: str, status: "pending" | "completed"}`) and `files` (a dictionary for context offloading).
+* **The Tools**:
+  * `write_todos`: Receives a list of task items from the LLM, injects the state, and returns a `Command` object to update `todos` and append a `ToolMessage` to `messages`.
+  * `read_todos`: A read-only tool that retrieves the current `todos` from the graph state, formats them as a readable string, and returns the string to the LLM (which is automatically converted into a `ToolMessage` by `create_agent`).
+* **Interleaved Execution (Steering Prompt)**:
+  * The system prompt instructs the agent to write a plan (`write_todos`) at the start, perform actions (like web search), and read the plan (`read_todos`) at select check-points to cross-verify progress, updating task statuses when complete.
+
+---
+
+#### 3. Dynamic Return Types: String vs. Command
+
+The `create_agent` prebuilt abstraction is extremely flexible and handles two return formats from tool functions:
+
+1. **Returning a `str`**: If a tool returns a string (like `read_todos`), `create_agent` automatically wraps the string into a `ToolMessage` and appends it to `messages` in the state.
+2. **Returning a `Command`**: If a tool returns a `Command(update=...)` object (like `write_todos`), `create_agent` bypasses the default wrapper and applies the updates directly to the specified state keys (e.g. updating `todos` and executing custom reducers).
+
+---
+
+### 📌 Deep Dive 10: Notebook 1 (`1_todo.ipynb`) Cell-by-Cell Breakdown & Execution Flow
+
+#### 1. Overview of Notebook 1
+
+Notebook 1 (`1_todo.ipynb`) implements the **Stateful ToDo Planner Pattern** (inspired by Manus and Claude Code). It teaches how to define a custom state schema with a list of tasks (`todos`), build tools that read/write to this schema via `InjectedState` and `Command` objects, prompt the agent to use them, and run a complete execution trace showing step-by-step recitation.
+
+#### 2. Cell-by-Cell Execution Flow
+
+* **Cell 0 (Setup & Env)**:
+  * **What it does**: Imports `os` and loads API keys/variables from `.env` using `load_dotenv` with `override=True`. Enables Jupyter `%autoreload` so that any modifications made to local source modules in `src/` are picked up immediately by the kernel without restarting.
+
+* **Cell 1 (Warnings Config)**:
+  * **What it does**: Suppresses specific UserWarnings regarding LangSmith using UUID v7, ensuring that runtime execution logs in the notebook remain clean and readable.
+
+* **Cell 2 & 3 (Theory Markdown)**:
+  * **What it does**: Introduces the concepts of planning, ToDo lists, attention decay, and context rot. Explains why long-running agents (like Manus) write and rewrite their ToDo list at the end of their context window. Notes the LangChain 1.0 update where `create_react_agent` is renamed to `create_agent`.
+
+* **Cell 4 & 5 (State Definition & File Generation)**:
+  * **What it does**: Markdown Cell 4 explains the extended `DeepAgentState` schema. Code Cell 5 uses `%%writefile` to write the schema to `src/deep_agents_from_scratch/state.py`.
+  * **Key details**: Defines a `Todo` TypedDict (with `content` and `status` fields) and `DeepAgentState` containing `todos` (overwritten on write) and `files` (updated using a custom dictionary reducer `file_reducer`).
+
+* **Cell 6 & 7 (Tool Prompt Description)**:
+  * **What it does**: Markdown Cell 6 introduces the ToDo tools. Code Cell 7 imports and prints `WRITE_TODOS_DESCRIPTION` to display the exact prompt instructions the LLM will see in the `write_todos` tool schema definition. This explains to the LLM when and how to update its checklist.
+
+* **Cell 8 & 9 (Write & Read Tools Definition)**:
+  * **What it does**: Markdown Cell 8 reviews `InjectedState` and `Command`. Code Cell 9 writes `todo_tools.py` using `%%writefile`.
+  * **Key details**:
+    * `write_todos`: Receives a list of `Todo` items and returns a `Command` updating the `todos` key in state and appending a `ToolMessage` to `messages`. Uses `InjectedToolCallId` to map the message to the current execution step.
+    * `read_todos`: Takes `InjectedState` to read the state variables dynamically and formats the `todos` list into a readable string with status emojis (⏳ pending, 🔄 in_progress, ✅ completed).
+
+* **Cell 10 & 11 (Usage Prompt Instructions)**:
+  * **What it does**: Markdown Cell 10 explains the ReAct graph execution. Code Cell 11 prints `TODO_USAGE_INSTRUCTIONS`, showing the system instructions directing the agent to write a plan before acting, recite/check it periodically, and update it as progress is made.
+
+* **Cell 12 (Agent Setup & Compilation)**:
+  * **What it does**: Builds a mock environment and compiles the agent graph:
+    * Defers actual web search to a mock `web_search` tool returning a hardcoded Model Context Protocol (MCP) summary.
+    * Initializes the model using `google_genai` with `gemini-2.5-flash-lite`.
+    * Creates the agent using `create_agent` with the custom `DeepAgentState` schema, custom tools (`write_todos`, `web_search`, `read_todos`), and the system instructions.
+    * Draws and displays the agent's Compiled State Graph using Mermaid.
+
+* **Cell 13 & 14 (Agent Invocation & Trace Output)**:
+  * **What it does**: Markdown Cell 13 introduces the test run. Code Cell 14 invokes the agent with an empty ToDo list (`"todos": []`) and the prompt: *"Give me a short summary of the Model Context Protocol (MCP)."* Prints the formatted conversation messages showing:
+    1. Agent plans by calling `write_todos` with a checklist.
+    2. Agent checks the ToDo list using `read_todos`.
+    3. Agent executes research by calling `web_search`.
+    4. Agent responds with the final summary.
+
+* **Cell 15 (Trace Reference)**:
+  * **What it does**: Provides a public LangSmith trace link where you can inspect the step-by-step nested state updates, tool calls, and payload values in real-time.
