@@ -1,0 +1,557 @@
+=============================================
+File: LCA-DAFS-M0-V1-Welcome.txt
+=============================================
+
+[00:00:00] Welcome to our course on Deep Agents. I appreciate you taking the time to join us. In the next lesson, you'll get a deep introduction to Deep Agents, but before starting, I thought you might find it useful to consider how we got to this point in agent development and what might be coming in the future.
+
+Initially, LLMs were surprisingly good at generating text and could reason about information presented in their input context. This was great for single pass operations like RAG or Chat. As LLM capacity increased. They could be trained to generate structured output, such as tool calls. With that, they could now interact with all our traditional computing infrastructure.
+
+You could also now build an agent. A very effective agent is a ReAct agent. That reasons and acts, that's where the name ReAct, comes from. It operates in a loop. The LLM gets a request. It calls a tool to get information or perform an action. It gets [00:01:00] feedback and it decides if it should call a tool again, or end. 
+
+A current model in a basic ReAct loop can be effective over several iterations of the loop, but can lose their way over long sequences. Yet we have seen several successful examples of long running agents such as Anthropic's Claude Code or OpenAI's Deep Research. 
+
+What makes them different is what we'll be covering in this course, planning, a file system, subagents and prompting. More on that in the next lesson. As you implement these, you may notice another trend. Early applications of LLMs include a significant amount of logic surrounding the LLM to control its behavior. Increasingly that logic has moved into the prompt and the machinery surrounding the LLM has become simpler.
+
+In this course, you'll use a simple but powerful ReAct agent as a building block. [00:02:00] With this simple agent, tools and powerful prompts, you can build a system that can operate on complex tasks over long time horizons. As this trend continues, it becomes increasingly important to have the skills and tooling that help develop great prompts. 
+
+Alright, let's get started. I really encourage you to download the notebooks and work through them along with watching the lesson. Check the resources page. It has all the information you need to get started. Okay, now onto the next lesson. 
+
+
+
+=============================================
+File: LCA-DAFS-M1-V1-Overview.txt
+=============================================
+
+[00:00:00] 
+
+Lance: There's at least two important trends with AI agents. One, we're seeing generalist agents that can take on many different tasks, and two, we're seeing agents operate over longer time horizons. 
+
+On time horizons, this METR benchmark characterized the length of tasks that AI can do and they've observed that's doubling every seven months. So we see that,
+
+the task length measured in the time it takes for a human to do the task
+
+is getting exponentially longer. We've also seen the rise of general agents that can do many different tasks. Manus is probably the most famous of this class of generalist AI agents, and Claude Code, which is of course an excellent code agent, is being used for many things beyond just coding. 
+
+Now, the challenge that comes with longer time horizon agents is that they call more tools. So a [00:01:00] typical Manus tasks requires 50 tool calls. Anthropic mentioned that production agents often engage in hundreds of turns.
+
+Now these, what we might call deep agents, share a few common principles. 
+
+Lance: They often use planning to help steer them and keep them on track over many turns. They offload context oftentimes to file systems rather than keeping all the observations from those tool calls in the message history. They perform task delegation to specialized sub-agents, and they often use careful and very extensive prompt engineering
+
+to carefully steer agent behavior.
+
+Now for planning, we've seen a number of different approaches taken here. Manus, for example, uses a todo list,
+
+which is saved as a file todo.md and is repeatedly read back into context and updated over the course of [00:02:00] Manus's trajectory. This has helped steer the agent and keep it on track.
+
+We also see agents using planning for user approval. Like for example, Claude Code has a plan mode where it'll always ask the user to approve the plan prior to taking actions. Gemini Deep Research does similar with Deep Research where it asks the user to approve the plan before it goes. OpenAI Deep research uses follow up questions. But these are all meant to verify and help steer the work with user approval.
+
+And of course we see many examples of rereading the plan over the course of the agent trajectory to help keep it on track. We talked about that with Manus and using its todo list, we see this other places too. So for example, Anthropic's multi-agent researcher writes the research plan to disk and rereads it at select points in time in order to help ensure that the agent's final report adheres to the originally generated [00:03:00] plan.
+
+Now a bit related to what we just talked about, the file system is a very effective way to offload context. So why do you want to do this? Well, it's important to save things outside the context window and allow them to be read back in on demand. A great example like we just talked about is Anthropic's multi-agent researcher, which can write the research plan to disk so it's preserved,
+
+do a bunch of research, then read that plan back after the research is done in order to make sure that the final report is grounded in the original plan that was created. As mentioned Manus saves its plan todo.md to the file system so it's preserved and it can read it back in and iteratively update it over time. Now the file system is also useful for offloading token heavy tool calls.
+
+This is particularly useful because raw tool observations, for example, from search tools can be very token heavy. So saving them to disk and maybe writing back like [00:04:00] a summary to the message list is a great way to save in tokens with your agent. This prevents raw tool observations from hitting the context window of your LLM while still giving the agent the ability to see what's in that tool observation through, for example, a summary which is much more token light. And of course, the agent can then choose to retrieve the full context if it needs. We see this used quite a bit, for example, in Manus.
+
+It's also really effective to use files for long-term memories. We showed that extensively in our course on Ambient Agents as an example. And this can be a very effective way to preserve things like memories over time, since they're saved outside the context window to a file system. So the key observation here is that the file system can really serve as like an externalized memory for agents. You can use it to save things for perpetuity [00:05:00] and fetch them back in at a later point in time as the agent needs. 
+
+This is very useful for long trajectories, because the agent can pull context back into the message history on demand when it needs it.
+
+Now, subagents for context isolation are another very important theme. And again, it relates to the point that the context window of your agent is precious. It's of course a limited resource and isolating specific tasks that can be easily delegated to subagents is an effective approach. Each subagent has it's own context window,
+
+and so all the work that agent does is isolated to that subagent context window, and then the results can just be passed back to, for example, the main agent. We see this with Claude Code. We see this with Anthropics multi-agent researcher. Manus has subagents. So this technique is very common across many popular agents.
+
+Now, it is important to call out, we need to be careful with subagents. They make implicit and sometimes conflicting decisions. [00:06:00] So Walden Yan of Cognition highlights this pretty clearly,
+
+and we'll talk about this a bit later. Now this risk can be avoided if the subagents work is easily parallelizable. For example, with Open Deep Research each subagent only does research and collects context, but the final report is written in one shot at the end, after all that context is collected.
+
+So this reduces risk because those subagents aren't actually writing parts of the report independently.
+
+They're only collecting information. In contrast, if you have subagents actually writing a part of an overall application, there's a higher likelihood that those independently written components may not play well together. So you have to be very careful about when and how you delegate to subagents.
+
+And of course, prompting. There's some nice resources out there. We actually can look at, for example, the Claude Code prompt. And you can see it's quite long, it has many revisions.
+
+So the relatively [00:07:00] simple agent architecture of just an LLM, bound to tools, calling those tools in a loop actually hides the fact that they can be quite hard to build and steer, and often much of that steering is pushed to the agent system prompt itself. So the techniques we just talked about, in addition to very careful and thoughtful prompting is really what
+
+characterizes many of these longer running agents that we're seeing more and more. So this is a summary of some of the agents we talked about and the approaches that we covered.
+
+We can see that Manus, Anthropic Research and Claude Code all, of course, use the file system. Open Deep Research uses the LangGraph state object, which serves the same purpose. It's a place where an agent can offload context outside the message list, but then fetch it back in as needed at later points in the [00:08:00] agent's trajectory. All use some form of planning, Manus with a todo tool, and Anthropic uses planning,
+
+of course, Open Deep Research uses the think tool for the same purpose. Claude Code, of course, has plan mode.
+
+All use subagents for delegation of tasks. And all use very extensive and careful prompting to help steer the agent.
+
+Now in this course, we're building out each of these components individually, so we'll talk about each one
+
+and we'll build it from scratch. We'll start with planning. We'll then talk about offloading context to files.
+
+We will talk about subagent delegation and then we'll put this all together into an agent with some custom tools supplied for our use case.
+
+In this case, we'll pick research 'cause it's such a popular application, and we've already done a lot of work on it.
+
+And then we'll show actually how you can use some very useful [00:09:00] abstractions to put this together pretty simply.
+
+So after introducing each of these components individually and building them from scratch, we'll put all this together into a custom agent and supply some custom tools.
+
+And at the end we'll introduce a deep agents abstraction, which is a very simple way to quickly prototype different agents with these four components, pre-built for you. So after building them all from scratch and understanding in detail how they work, 
+
+we'll examine this deep agent's abstraction, which has these things pre-built for you. Let's dive in.
+
+
+
+=============================================
+File: LCA-DAFS-M2-L0-V1-CreateAgent.txt
+=============================================
+
+Lance: [00:00:00] In this course, we're going to build up to a deep agent, which has these core components as shown in the diagram and is discussed in the intro. Now we're going to build this on top of a prebuilt agent abstraction. We're going to talk about this briefly in this first lesson, and we're going to show why this simplifies the code significantly.
+
+This prebuilt agent abstraction, is simply called create_react_agent Now, what is ReAct and why is it called this? So ReAct was a paper that came out in 2022 that laid out a very simple architecture for building agents involving reasoning and acting. The central intuition is that an agent could be composed of an LLM calling tools in a loop, reasoning about what tool to call, acting by calling the tool and observing that tool feedback.
+
+Now this simple loop has had a lot of staying power it remains today a very common agent implementation, so that's where that name ReAct comes from. You can see this diagram. This is exactly what we're going to be building. If you've seen any prior courses or looked at our [00:01:00] docs, you'll see this very simple tool calling loop discussed and used repeatedly.
+
+Now this create_react_agent abstraction has some real benefits for us. In particular, it has support for a few things out of the box. We discuss them here, memory integration, human in the loop, streaming, lots of support for deployment. You can read the docs to learn more about these things, but I'll only show a few of the key features here that are relevant for building deep agents.
+
+So let's use this abstraction to build an agent. First, we'll define our tool. So here's a simple example of a calculator tool. You can see that all we need to do is define a python function with this tool decorator.
+
+Lance: This simply performs arithmetic, and you can see it takes two arguments, A and B,
+
+along with an operation, and then performs the operation, returns the result to the LLM.
+
+Now this is where we actually implement the agent. You can see from langgraph.prebuilt import create_react_agent, this is that agent abstraction we've been talking about.
+
+All I need to do minimally is pass a model and tools, [00:02:00] but I can also optionally pass in a prompt. And there's many other arguments you can pass in as you can see in the documentation. But for this simple case, all I need to do is pass my model. You can see we'll use 4o-mini. We'll pass the tools, which is a list of tools we defined, and we'll define a very simple prompt.
+
+Then we very simply can visualize our agent. So this you can see is just two nodes. An agent node, which calls our LLM, a tools node, which executes any tool calls that the LLM makes. A conditional edge that routes to the tool node if the LLM makes a tool call, otherwise goes to end. And we can see the agent itself is a LangGraph compiled state graph.
+
+Now we can invoke the agent just as we talked about previously, with any compiled graph, agent dot invoke. By default, the create react agent will use
+
+a simple state schema, which has
+
+a messages field. We can simply pass an initial message as a list, and under the hood, the agent [00:03:00] will pass this list of messages to the initial LLM node.
+
+The LLM will decide then what to do. If it makes a tool call, the tool observations will get appended to messages and sent back to the LLM. And we can see this shortly. Here's the initial message we pass in from the user. Here's the LLM making a tool call. In this case it calls our calculator tool with the arguments.
+
+So that's great. The tool output is just these two values multiplied. And then, the LLM node sees that tool output, returns in natural language the answer, and we exit because the LLM did not make a tool call.
+
+So if you look at our diagram, what happened was we went to agent or LLM. The LLM made a tool call that conditionally routes to the tool node. It runs our arithmetic tool, returned that tool observation back to the LLM. The LLM looked at and said, okay, I have my answer, returned an answer,
+
+and we went to end. And you can see that diagram pretty nicely [00:04:00] here with the initial input going to that LLM, Prompt plus LLM results in a tool call that goes to the tool node, the tool node returns the observation from executing the tool, and then the LLM returns the final state back to the user.
+
+Of course you can try this yourself. Just pass in any operation that you're interested in here, look at the results, and you can also check LangSmith if you'd like. 
+
+Now one of the most powerful things about LangGraph is we can very flexibly modify the state schema of our agents. So in this particular case, create_react_agent was using a default state schema, AgentState. It simply is composed of a messages field and this field remaining_steps.
+
+Messages is simply a list of messages. And you'll notice this add_messages, what we call reducer, very simply just appends messages to this list as each node processes. So for example, our [00:05:00] initial agent node performs a tool call. That AI message gets appended to the message list.
+
+We then go, for example, to the tool node. The tool node invokes our tool with the arguments from the tool call from the LLM. We then take that tool observation and append it to our messages list as a tool message. Remaining steps just tracks the steps in our graph.
+
+Now what's nice is this is simply the default state that you get when you use create_react_agent, but you can actually define a custom state.
+
+So let's try this out. In this particular case, we'll extend the calculator tool with a list of operations that have already been performed.
+
+We'll just add a list to our state and we can define a custom reducer function as you see here, to append to this list. So here's reduce_list. This is our reducer. You can see reducer functions can be custom defined. And , when we define our schema, you'll see we simply take AgentState, which we know by default has a messages field, which we want to maintain, inherit from it, [00:06:00] and very simply add an additional field ops.
+
+This is just a list with this reducer, which will append to the list as operations are being performed.
+
+So now we can extend our calculator tool to include state so we can append the current op. So now think about what we need to do. We want to keep a running list of ops that our calculator tool runs. So we'd like to pass our agent state into the calculator tool in the tool call and automatically append to this ops field when we perform a tool invocation.
+
+This presents kind of an interesting issue. You imagine, in principle, it could be something like this. We define our calculator tool, which can actually take in the state of our graph, and then our LLM makes a tool call. It has to produce the state of the graph in its arguments that are passed to our tool.
+
+The problem is clear though. When that LLM is making a tool call, it's only looking at the set of [00:07:00] messages. It doesn't actually have access to
+
+our graph state unless we explicitly took our graph state and appended it to messages in some way. So what you can do here, which is very convenient and common, is to actually inject the state into the tool node after the LLM makes a tool call. This is a subtle but very important point. You can see this toy diagram here in what we expose to the LLM.
+
+We still just pass our calculator tool with operation A and B. There's a human input. Our agent node looks at the human input, sees the bound tool, decides, I'm going to make a tool call. Produces a tool call, just like before with the operation and the arguments. Then when we pass that tool call into the tool node, we also inject the graph state.
+
+This gives the tool node access to the graph state, but doesn't burden the LLM with having to know the graph state when it actually generates the tool call. Very simple principle but highly useful as we'll [00:08:00] see shortly. So all we need to do is when we define our tool, we can very simply specify state,
+
+as InjectedState and InjectedToolCallId. So what happens is, these arguments are not actually sent to the LLM. The LLM does not produce them. They're simply injected after the LLM produces this tool call by LangGraph. This gives tool node access to them when it's actually invoking the tool, but doesn't burden the LLM itself with having to produce those arguments. Simple and highly useful.
+
+So if we want our tool to actually directly update LangGraph state, we can do something very simple when using the create_react_agent prebuilt. We can just return this Command object.
+
+The command object in LangGraph is very useful. It allows you to both perform state updates as well as control flow decisions in a single step. So in this [00:09:00] particular case with Command, you can pass go to which tells the graph where to go next if we wanted.
+
+And you can also pass update as we do right here with a dictionary indicating
+
+which fields in schema to update accordingly.
+
+So what we can do is you can see, here's our new calculator tool. We're going to inject the state, we're going to inject a tool_call_id. The LLM won't see these, but when we run the tool , as you'll see, this will run just like before. But what we can do is return this Command object and this will actually directly update our graph state.
+
+We can see we update messages with a tool message indicating the result
+
+of invoking our tool just like before with a tool call id. That's fine, but we also can update our ops field and state directly.
+
+So now we can just create_react_agent, pass our new tool. And you can see right here we're going to pass a new state object, CalcState. Let's refresh ourself on [00:10:00] that.
+
+CalcState was defined right here, inherits from AgentState and has this ops field.
+
+So now we invoke our agent just like before. Tool calls made just like before. And very nicely, you see, the tool call only contains operation a and b. So the state and the tool call ID are ignored by the model. We get the tool output. LLM responds in natural language just like before.
+
+And we can look at the full state of the response object right here. You can see it contains ops,
+
+which again is just the operations that were made in that tool node and the message list.
+
+So we've successfully been able to update our graph state directly just by returning command object from our tool node. Now importantly, recognize that this is possible because our create_react_agent prebuilt can handle command objects directly, when they're passed back from tool invocation.
+
+[00:11:00] So all that'll happen is, inside the tool node within the create_react_agent prebuilt, it'll basically invoke our tool. Our tool will return a command object. It will then see that command object and just return it directly from the tool node. Which will then indicate, okay, I have the necessary updates to state that I need to make directly from the tool call, just make those updates by returning it directly.
+
+And we can, of course, the other examples of this, you can play with this yourself. Try three different operations. In this case you'll see parallel tool calls. That's fine,
+
+and we get the result.
+
+So that really covers the basics of create_react_agent, which is foundation that we're going to be using for building deep agents. There's a lot more features you can look into, and I encourage you to check out the documentation,
+
+but what we talked about here is relevant for everything else we're going to do in the class. 
+
+
+
+=============================================
+File: LCA-DAFS-M3-L1-V1-Todo.txt
+=============================================
+
+Lance: [00:00:00] So we talked about the Create React Agent abstraction, which is the basis for building deep agents. Now let's talk about the tools individually. We introduce these all in the intro, but let's talk, for example, just about planning and implement it from scratch. 
+
+So planning is very commonly used in long running deep agents. Claude Code uses it. For example, it has this TodoWrite tool, which writes todos.
+
+And it has a plan mode, which allows the user to actually approve the plan before it executes. Manus, of course, writes a todo.md file, which it updates iteratively over the course of the agent trajectory.
+
+Now let's talk about state for deep agents. Deep agents are going to create a plan. The plan's going to be a todo list. That todo list we want to live in state.
+
+In addition, as we'll see in the next lesson, deep agents will use files. So what we want to have in our state's schema is messages of course, but also a todo list and specific files. So all we need to do, as we just saw, is take the basic AgentState as we see here, [00:01:00] which is pre-built in LangGraph, which already has that messages key and add todos and files to it.
+
+Now we'll define a schema for to do. . This will just be a simple TypedDict with content and status for each todo. We'll also define
+
+a reducer for files, which allows us to merge them. And very simply, we're going to create DeepAgentState, it'll inherit from AgentState. We're going to add two new fields todos, which is a list of those todo objects we just created and files as shown here,
+
+which will just be a dictionary.
+
+Now the strategy here is pretty simple. What we're going to do is give our agent a tool to write todos. We just saw the schema for todo above. They're very simply, a dictionary with content and status for each todo.
+
+Our state will house a list of them,
+
+and we're going to give the LLM the ability to create that list of [00:02:00] todos or update it accordingly as a tool call. So first we're going to write the todo tool description,
+
+and this is what the description's going to contain. Very simply when to use the todo tool, the structure of the todo tool, best practices, and so forth. Now you can modify this description as you need. This is just a nice example for how we would tell our LLM how to use the todo tool. Now we'll define our tool. When we create the tool, you can see that we can pass the description to the tool decorator and this will expose that description we just went through to the LLM with the bound tool.
+
+We can see the argument is simply a list of todos.
+
+So the LLM will basically generate a list of todos per our instructions and we'll also inject a tool call ID.
+
+And of course, as we just discussed in the last lesson, the LLM will not actually produce this.
+
+It'll be simply injected by LangGraph. Now, from
+
+this [00:03:00] tool, all we're going to do is very simply write the todos to state. Remember, our state object has the todos field and a messages field. We'll write the todos to the todos field, and of course we'll write a tool message to the messages field indicating we updated the todo list with the specified todos. As we just talked about in the last lesson,
+
+returning this Command object directly from the tool itself
+
+will directly result in an update to state when using the Create React Agent prebuilt abstraction. Because the tool node in Create React Agent can handle these command objects directly and will simply return them allowing LangGraph to then directly update the state of the graph.
+
+Now, we'll also define a simple tool called read_todos. You'll see why this is useful in a bit, but this tool allows the agent to then read in the todos from state, and we'll just have some nice formatting, as shown here, and it'll just return that string from the tool call. Now, an important but subtle question is, you might say, Oh, okay, [00:04:00] so in this tool we're just returning a string, but in this case, we're returning a command object.
+
+This is because the Create React Agent prebuilt can handle either return type from tool invocations. If you return a command object, the tool node in the Create React Agent prebuilt sees that and just returns it directly, updating the state of the graph. However, if you return a string here, the Create React Agent prebuilt will then package that string into a tool message and update the messages field in state with the tool observation.
+
+So the prebuilt automatically handles either case for us, which is quite nice.
+
+Now we can simply pass a prompt to our agent indicating the tools that are available and how to use them. Again, we're going to use our prebuilt create_react_agent,
+
+and I'm going to mock up a search tool. This is going to be the mock search results. Something about MCP. This is the mock search tool, which just returns that mocked up search result. We'll define a model [00:05:00] which uses the todo tool, the web search tool, and the read todos tool.
+
+And we're going to mock up some very simple research instructions, as you see here. Make a single tool call to the web search tool and use the answer provided. We create react agent, pass our model, pass our tool list. We'll pass the todo usage instructions and the research instructions as noted here, and we'll pass in our state schema.
+
+You can see our agent compiles just like before, there's no difference in architecture. The only difference is the prompt we provided, the tools we provided,
+
+and the state.
+
+You can see we can run invoke agent. We can invoke our agent by passing a message. Give me a short summary of MCP, and we can look at what happens. Here's the human message in, the LLM of course makes a tool call to write_todos because we instruct it to do so. And the todos very simply are a list of dictionaries with status [00:06:00] and with content.
+
+Now what happens is, the state of our graph is updated with its todo, and we wrote a tool message as shown here indicating that we've updated the todo list. Both of those things are done inside our write_todos tool. So todos have been written, the LLM then goes and runs web search,
+
+it gets this mock search result. That's great. Now what's nice is we instructed the agent to then read todos once it's performed search to confirm that it has complete all its tasks. So it reads todos from state and you'll see what's really cool is it indeed still has this todo, which we wrote above right here in state,
+
+saved to that
+
+todos field right here.
+
+Now once it reads from state, [00:07:00] gets the todos, then it updates the todo list indicating that this task has been completed. So that's great. The task is done. It returns a natural language summary of Model Context Protocol based upon the search result. So, very simple example of how we can use a todo list to help steer agent execution. In particular, all we need to do is define a tool that will write or update todos.
+
+We define a separate tool that'll read todos. We instruct the agent to write and read todos in an interleaved manner as it proceeds through its trajectory.
+
+And we can see this very simple setup works very nicely using a mock search tool. 
+
+
+
+=============================================
+File: LCA-DAFS-M4-L2-V1-Files.txt
+=============================================
+
+Lance: [00:00:00] So we talked about the basic create_react_agent prebuilt. We talked about planning and using simple tool calls to create todos and update them and directly update state with those todos. Now let's talk about context offloading using files. So we see this used repeatedly across various deep agents as we talked about in the intro lesson.
+
+And so let's build out a set of tools that can be used to list, read and write files. These are some simple file operations that we'd like to do. Now this implementation is going to be a simple virtual file system built on top of LangGraph state. In this particular case, it's just going to be a simple dictionary where keys represent mock file paths and values represent the contents of the file.
+
+That's all we're going to do.
+
+And so we're going to build three tools, and here I'm going to lay out the tool descriptions. We'll have an ls tool, a read tool, and a write tool. The ls tool will simply list all the files in the virtual file system. The read file tool is simply read a specified file [00:01:00] using the path,
+
+and some optional Args. Write file, of course, will then just write a file, specify the path, specify the content.
+
+Now remember, the path is just going to be a simple key in our dictionary that indicates the location of a file. And now we can implement these tools. So the ls tool, for example, it's just going to list the files in state, and you're going to see something nice here. Remember in the initial lesson we talked about injected state? We're going to use that here.
+
+We're going to inject the deep agent state, which allows the tool to access the graph state. From graph state, then we can just get files and return them as a list. Simple.
+
+Now for the read file tool, same story. We're going to use injected state just like before, and we're going to let the LLM specify the file path, the offset, and the limit, as discussed in the Args here.
+
+And this is a simple implementation just to [00:02:00] get the files from state, to isolate the file that we want to actually read, to read it, and optionally read only a specified range, return the file contents, very simply as a string.
+
+And finally write file. In this case, just like before, state, file path and content.
+
+State is injected. So the tool call from the LLM only needs to provide these two things. And again, we're going to use the command object because here we're directly updating the state of the graph. So you can see we get the existing files in the state. We add the new file path to it, just like this. Remember, it's just a dictionary. And then we rewrite those back to state.
+
+We return also a tool message, indicating we've updated a file.
+
+Now one nice thing to pay attention to is that when we created our state object, we defined this file reducer. So what's really going on here? Well, here's really the key explanation. The files are [00:03:00] added to state using this reducer. When we invoke our tool,
+
+left is existing files in state, right are the new values. The final statement allows for the new values to overwrite the old ones. And this is the important point. Any duplicate keys overwrite earlier values. So what happens here is, remember, in our tool, we fetch the existing state object,
+
+and you can see right here, we go ahead,
+
+and either create a new file path in our state dictionary or overwrite an existing file path in the dictionary with content. Now the reducer handles this
+
+because if we simply are updating an existing file, we will overwrite it in state, which is exactly what we want.
+
+So just like before, we're going to go ahead and define some file usage instructions. Now again, these can be customized for your application. [00:04:00] You can provide the agent with any way you want to use this virtual file system, it's extremely flexible. In this case, I will specify workflow process indicating, Orient using the ls tool, Save using the write file tool, Read using the read file tool to ensure that you directly address the user's question in this particular case. And we pass the research instructions just like before. We have a single search tool, and we use it. So there's our overall instructions. You can see that here. Very nice. There's our prompt.
+
+Now we're going ahead. We're going to import the create_react_agent, just like before. We're going to define a mock search tool, just like before. Same model. Our updated tool list contains ls, read file, write file, and web search. That's good. Compile our agent, same as before. And we run it. Now what happens? Here's our human message that was passed in.
+
+Now, what's interesting is in our instructions, we told the agent to run ls first to see if there's [00:05:00] any existing files. We do that, there's no files that have been written. That's fine. The agent does, Okay, I'm going to write a file, which captures the user's question. So that's great, we instructed it to do so.
+
+The tool output indicates we've created this new file called user_request.txt, so that's great. Just like we instructed, we've created a file that contains the user request. We go ahead and run a web search. That's good. We get the search output. We then, as instructed, read the file we created, user request, just to make sure that we have it back in context.
+
+We show it here as a tool output, and then we answer the question.
+
+And we can look and see that files have been saved to our mock file system. In particular, user_request.txt, and the content. Now, in this particular case, it looks trivial. This is a very simple agent with a single tool. We're only asking it to do a single web search, [00:06:00] so it seems kind of silly to write this file and to read it back in before we answer the question.
+
+But the point is to show the concept. With longer running agents that have dozens of tool calls that can be very important to re-fetch context that we saved to files to, for example, steer the agent after many, many tool calls. And as discussed in the intro lesson, we see this done quite frequently, but this shows you the principles for file creation,
+
+reading, and listing files. These core functionalities are available to you in the deep agent abstraction, which we are building towards. But this shows you the principle that underpins them and how they work, building on top of a mock file system in LangGraph state. 
+
+
+
+=============================================
+File: LCA-DAFS-M5-L3-V1-Subagents.txt
+=============================================
+
+[00:00:00] 
+
+Harrison Chase: So we talked about how to use Create React Agent and how to use the todo tool and how to use the file system. Let's now talk about subagents. So this diagram here shows the basic idea behind why to use subagents. If you give a single agent a lot of tools or a lot of context, it might get overwhelmed and not know how to respond correctly or may not call the correct action from there.
+
+But if you break it up into subagents, then each subagent can have its own isolated context with its own set of tools and its own instructions. And from there it can do those tasks very well independently. And then the main agent only calls those subagents and only gets back the final response. So the basic idea here is context isolation.
+
+You really, really focus in those subagents on what exactly to do. So let's see how to use and define them within deep agents. Step one that we're going to want to do is have some process for specifying and then [00:01:00] creating subagents. So subagents are going to be specified by a name, a description, a prompt, and a set of tools. 
+
+Let's go through these. The name is the name of the subagent. This is what the main agent will use to call that subagent. The description is also used by the main agent. So this tells the main agent what this subagent is good at and when it should call it, and things like that. So these first two parameters, name and description are used by the main agent to determine when to call the subagent.
+
+Now these next two parameters are used to define the subagent. So specifically the prompt is going to be the system prompt or instructions that are passed, or given to the subagent. And then the tools is going to be a list of tools that it has access to. And you'll notice here that it's going to be a list of strings, not of tool objects.
+
+This is because the tools that the subagent has access to are going to be a [00:02:00] subset of the overall tools that the main agent has access to. And so we're going to pass in this list of strings where each string is a tool name, and then we're going to use that to filter down the overall tool list. And how we're going to create the subagent from here is pretty basic.
+
+We're going to use create_react_agent again. So this is going to be used to create the subagent. We're going to use the same model as the main agent. We can change this of course, but for now we're just going to use the same model. And then we're going to pass in the custom prompt and the custom tools. This will give us this mapping of subagents from this subagent name to this subagent object.
+
+But now, how do we create the tool that the main agent will use to call the subagent? Because remember, the main agent is just calling tools, so we need to give it a tool to call the subagents.
+
+This is roughly what it will look like. So the tool will have two arguments. The first will be a description or a string, and this will be the task that the subagent should do. [00:03:00] And then the second argument to this tool will be a type, and this is the subagent_type that should be called to do this task. So if you remember up above we could specify multiple different subagents with multiple different names.
+
+This name is going to be the thing that you pass in here to subagent_type, because the main agent needs to specify which subagent to use. Inside of this tool, we're going to do three things. First, we're going to prepare the call for the subagent. So this subagent being a Create React Agent will have access to a messages key.
+
+And so we're going to want to create a messages list that is specifically for this subagent. And so it's just going to be a human message with this description string as the content. So we're going to prepare the new messages to pass to the subagent. We're then going to call the subagent, and then once we get back the response, we're going to transform that response into an update to the main [00:04:00] agent.
+
+So specifically what we're going to do is we're going to get back from the subagent a message, or rather a list of messages, but it'll have a final message as the last message. And we're going to take the content from that last message and use that as the tool call response. And then we're also going to take any changes to the file system and update the main agent with that, because remember, our main agent is using a file system.
+
+And so we're actually going to pass that file system to the subagent. The subagent could modify that file system, and so if it does, we need to make sure to propagate it all the way back up to the main agent. And so in full, this tool that we're going to create to call other subagents is going to look something like this.
+
+It's going to be a tool, it's going to have a description, and we'll see what this looks like further down. It's going to take in these two arguments, description and subagent_type. And then it's also going to take in two other things, state. And so this is used to get the list of messages and also the file system that we're going to pass to the subagent. [00:05:00] And then tool_call_id, and we use this to return a final tool message at the end.
+
+Inside this function, we're going to first check to make sure that the subagent_type is actually one of the agents that we have. We're then going to get that subagent. So remember, subagent_type is just a string. Now this is an agent itself. We're then going to create the input to that subagent.
+
+So notice here we're modifying state messages. And this is important when we call the subagent, we're passing the whole state, so everything else in state, including the file system, will be passed along to the subagent. The only thing that's changing is this messages list. So specifically we now have this user message with the content of this description.
+
+We then pass this into the subagent, the whole state. So the messages, the file system, everything. And then we're going to return this Command object in LangGraph. And it's going to do two state updates. So it's going to update files and it's going to update messages. It's going to update [00:06:00] files by basically getting the result of the subagent, and then, uh, returning that.
+
+And that's going to be merged in to the overall main agent. And then messages, it's going to add this ToolMessage. And so it's going to add this ToolMessage with this, uh, result messages. So this is getting all the messages from the subagent, getting the last one, which will be an AI message, and getting the content there, and that's getting passed back.
+
+So importantly here, the main agent will not see anything that the subagent does except for the final message. So you need to make sure to prompt the subagent to respond with a final message and not be like, Okay I've done it, after they call a bunch of tools. Because the main agent will have no clue what those tools are because it's only the final message content that's getting passed back. So here we can see the task_tool.py and let's walk through the full code. Here we can see that we have this description of a subagent. We now have this function, which takes in a list of tools, a list of subagents, the model, the [00:07:00] state schema, and creates a tool. How does it do this? First, it creates this dictionary to hold all the subagents that we will have. It then goes through all the tools and it will create a mapping of tool name to the actual tool.
+
+We will use this down here.
+
+Down here, what we're going to do is we're going to loop over the subagents that are specified, and we're going to create a subagent for each one. We're then going to create this string, which combines all the descriptions of the subagents. Because remember, this is how the main agent knows how to use which subagent, and it's going to pass this in to the tool as the description.
+
+So here's where we're creating the tool. This TASK_DESCRIPTION_PREFIX is hard coded, but then we pass in this other_agents string, which is dynamically created from the subagents that we create. And then this is the same code as above, which we already walked through.
+
+Here we can see the subagent usage instructions that are part of a prompt that we have available in this repo.
+
+We can see that we [00:08:00] specify that it should coordinate across different subagents. It should use the task tool with the description and the subagent type. We also give it a think tool, just so it can think and do things. And we say that it can call multiple ones in parallel.
+
+So this is important. Sometimes the agent might not want to call multiple subagents in parallel. Here we can. Let's now build a full research system, which is supervisor and subagents. We're going to mock out this search_result just to speed things up. But here you can see that we define this fake web_search tool. We're then creating these really simple research instructions here, and we create this research_sub_agent.
+
+So this is a dictionary with the name, description, prompts, tools field that we defined above. The name is research-agent. The description is, uh, delegate research to subagent researcher only give this researcher one topic at a time. So here we specify how the main agent should call the subagent. It has a prompt.
+
+It's got the web search tools. We then create a model to use. We create the [00:09:00] sub_agent_tools that we're going to pass to the main agent. We then create this task_tool, so this is the subagent tool itself, and then we create this main agent by giving it the model, the delegation_tools. So notice the main agent is not getting the web search that's just getting passed to the subagent. And then we're going to have this delegation tool. And this delegation tool is going to be used to delegate to subagent. And then here you can see that we have these subagent usage instructions that we have above.
+
+If we look at the graph, it looks just like before there's an agent with tools. The only difference is one of these tools is now a subagent. We can invoke it. Give me an overview of Model Context Protocol and we can see what happens. So it gets this human message. Now there's this main AI message and this is saying, this is calling the task tool with the description here and the subagent_type research-agent.
+
+And we can see the tool output. And so this is the output of the subagent. And so you can notice that it's pretty detailed and we can see the full [00:10:00] output there. And then here we can see the main AI agent, 'cause it just called this tool, it got back this response, but now the main AI agent needs to respond to the user.
+
+And so you can see that it repeats a lot of the information here. Let's take a look at the trace that shows what's going on. So here we can see that the first model call It makes. We can see that it has access to the task tool only. We can see the system prompt here, and we have the human input, and then we get the output here where it calls this task tool. This tool's parameter then goes in and inside of the task tool we can see that calls another agent.
+
+So now this is the subagent. It has a simpler system prompt. It's got the web search tool and we can see that it decides to call the web search. The web search tool runs it, gets back this mock result. Remember, this is what we put as a mock result in the notebook, and then here is where the subagent responds with its research report.
+
+And then here's when the main agent responds. So this is what the main sees. It sees the system prompt, the human, the AI, this task [00:11:00] tool result, and then it generates this full output.
+
+So in this lesson we learned how to use subagents. And the reason that subagents are important is they provide this context isolation that really lets these subagents go deep into particular topics, do lots of tool calls, and then generate a final response. And the main agent will only see that final response.
+
+So it lets it really go deep in these particular areas, and that's part of the reason why subagents are crucial for deep agents. That's where the deep part comes from.
+
+
+
+
+
+=============================================
+File: LCA-DAFS-M6-L4-V1-FullAgent.txt
+=============================================
+LCA-DAFS-M6-L4-V1-FullAGent
+===
+
+Lance: [00:00:00] So we talked about the Create React Agent abstraction. We talked about planning, context offloading to files, subagent delegation. Now let's put this all together into a fun and interesting practical agent use case. We'll build a deep agent for research. Now of course, research is an extremely well covered theme.
+
+We have an entire course on open deep research. We have a very popular open source repo, open deep research, and I'll take some of the tricks that we use there and employ them here with deep agents just to show how you can reproduce a lot of that with this deep agent abstraction.
+
+Now I'm going to show three central tricks here. We'll use todos to keep track of tasks. Sure, we've seen that already. Nothing too new there. Now I'm going to show you something else kind of cool. We're going to use files to store the raw tool calls. Now this is something that's quite useful, and a very practical use of file systems.
+
+For example, with Manus, they talk specifically about ensuring compression tasks are recoverable. So what they do is , when Manus performs token heavy tool calls, [00:01:00] like search, it'll save the raw tool observation to a file and pass a summary back to the message list. This saves tokens significantly 'cause we don't plumb back raw tool observations back to messages. 
+
+But A, the summarization is not irreversible 'cause we save the raw tool observation if we need it. And B, the agent can always reference the raw result if it needs to. So, a very practical and nice use of the file system is, for example, for saving raw tool observations that are token heavy. We'll also show delegation to subagents.
+
+So here's just an example search tool. In short, what's going to happen is we're going to choose a particular search tool. In this case we'll use Tavily but you could play with this and try other tools if you'd like. Tavily is a search engine that's well designed for AI applications with a generous free tier. 
+
+We'll then summarize those raw tool observations.
+
+So we'll run Tavily search to get
+
+search results and URLs. We'll clean them [00:02:00] up a little bit using markdownify, an open source library to go from raw HTML to a nice markdown document. We'll summarize the content,
+
+and we'll save the raw markdown for each webpage to the file system. We're also going to employ this think tool, which provides structured reflection between search tool calls. But of course, this is optional. You could use a different search tool, you could omit the think tool.
+
+It's very flexible. I just want to show an example, utilizing some of the ideas we talked about in detail in the prior course on deep research. So here's the research tools. We'll define them here. We'll define a summarization model, a simple schema for generating summaries.
+
+Now this is just the function to run Tavily search. You can see we hit the client, we get some results, so that's fine.
+
+This is where we process those search results. This is optional. You can handle this in many different [00:03:00] ways. I happen to like this approach, we use this HTTPX client, read the URL, convert it to markdown and return processed results. So it's a very simple way to get their URLs from Tavily which is like your search tool.
+
+You read them using HTTPX here, convert them to markdown, and those are your raw observations. You can see we saved that as raw content.
+
+Now this is a simple utility that will summarize the webpage content . You can see we create an LLM with structured output right here. The schema of the output is just the summary object, which we talked about above. We invoke the model.
+
+We get a summary and a file name.
+
+And you'll see why we use both the summary and the file name shortly. Remember we get that file name from the summary object defined right here. It's both a summary of the page and a file name to save those raw contents too.
+
+[00:04:00] And here's our final tool called tavily_search. It executes the search. This reads in the raw URLs, converts to markdown, and then performs summarization. We get the process results back out here, and then we simply format them. You can see we iterate through. We get the file name.
+
+We create this file_content object, which is basically a combination of the search result and the raw content as well as the summary. We save the raw content to a file named filename.
+
+And we're going to append the summary to this running list of summaries for all results.
+
+And we're going to pass all those summaries back as a tool message. So what's going to happen here? We do a search, we fetch the URLs, we convert them to markdown. Those are the raw results. We save all those to files. We return summaries in the tool [00:05:00] message so our agent knows, Hey, here's a summary of everything it learned.
+
+And we've also offloaded the raw observations to files that live in our mock file system. A very simple and useful way to use context offloading. We don't burden the message list with all those raw tool observations. We offload them the files. We provide only summaries in messages, but of course, we also provide in those summaries
+
+the file names themselves, which then can be read in later if needed in full. We'll also define our think tool. This is very simply a no-op tool. Nothing actually happens here. It's just an opportunity for the LLM to stop and reflect. It enforces that behavior. There's some interesting research on this in particular by Anthropic talking about how interleaved thinking can significantly improve agent performance.
+
+Anthropic models even have an interleaved thinking mode specifically, and this think tool is a way to reproduce that [00:06:00] behavior more generally in a customizable way. 
+
+So now let's build our deep agent. Really, you can see the work here was defining our tool. The agent itself is trivial. We'll reuse everything we talked about before from the other lessons. We'll define our model, some practical limits on subagent delegation. We'll define some subagent tools. We'll define some built-in tools including,
+
+list, read write files, write to dos, and the think tool. We're going to create a research_sub_agent, just like before. We'll pass in research instructions, just as we talked about previously.
+
+We create a task tool, pass in our research_sub_agent. And again, we have a delegation tool to delegate to the subagent. These are all the tools. We combine them.
+
+Then we of course, format our subagent instructions, so we put this all together and we can look at it. Here's the instructions we pass to our researcher itself. This is where we're prompting our [00:07:00] research subagent Now, of course this is going to be custom for your application. I would spend a lot of time thinking carefully about your agent.
+
+If you want to dig into prompting for research in particular, see our prior course on open deep research where we talk about this in a lot of detail. But here I'm just showing you this is a, a reasonable prompt for our research agent with some practical hard limits and instructions to show thinking. And now these are the general instructions for our supervisor or our deep agent.
+
+Again, we're going to combine todo management, file usage instructions and subagent instructions all together into one. We saw these all individually, so it should really be nothing surprising here. How to use todos, how to use the file system, how to use subagent delegation, so that's all great.
+
+And we go ahead and invoke it with our request to give me an overview of Model Context Protocol. Let's kick that off. Now what's cool is we're going to see this deep agent interleave all the things we talked about. [00:08:00] First, it's going to look and see if it has any files. It doesn't have any, and as instructed, it's going to write the user request.
+
+Good. So we have that logged now it's going to create some todos. Excellent. We can see the todo list, just research Model Context Protocol with status pending, analyze the findings pending. Okay, that's great. We write our todos, then we call delegation. We delegate this research task to our subagent.
+
+Good. And we can see the subagent returns all these results to us. That's good. 
+
+We call the think_tool, which provides some reflection. And what's interesting about this is deep agents can continue to call subagent task delegation as needed. So the think tool's a nice way to interleave the process with some reflection.
+
+And it allows you to audit how the deep agent is actually thinking about the process and what it's going to do next. This can help significantly with prompting because, for example, if it goes off track, we can see its [00:09:00] thought process and that can inform how we need to prompt the agent differently to steer it a little bit more effectively.
+
+So in this case, we record the reflection. That's good. The information it has is well structured. He has, it has enough detail to provide an answer to the user and it says, I should now mark the research task as completed. So great. We can see that. It goes back to todos. It completes the research task.
+
+That's fantastic.
+
+It provides an answer and provides a second update to the todos that updates our second analysis task as completed. And it then exits and responds that I've answered your request with a comprehensive overview.
+
+So a simple and effective example showing how we've used all the components together in an interleaved manner.
+
+We read files to see if there's anything available. We wrote the user requests so it's available to the agent if needed later. [00:10:00] We wrote todos.
+
+We use subagent delegation.
+
+You don't always have to build all those tools yourself. You can use this deepagents package. You can see here, here's the repo, and this package is a nice abstraction built on top of create_react_agent as we've been showing here, but it has built in for you the file system tools, the todo tool and the task tool.
+
+So it wraps all those things. You don't have to worry about implementing them all yourself. So with this general deep agent abstraction, you can build a lot of different agents if you provide different tools, different sub-agents, and use case specific prompting. The nice thing about this abstraction is it's very general and should be suitable for a large number of different agent applications.
+
+So hopefully this is useful and gives you the core foundations for actually building your own deep agents. 
+
+
+
+=============================================
+File: LCA-DAFS-M7-V1-Conclusion.txt
+=============================================
+
+Speaker: [00:00:00] Congratulations, you've now built a deep agent from scratch. You've learned about the Create React Agent component, which gives you a prebuilt agent right out of the box. An agent like this is simple to spin up and can be applied to tasks with a small number of steps. 
+
+A few key changes you've made. First, to keep the agent on track over longer periods you added a planning tool, a todo list. Having the LLM create this list, keep it in context and periodically refresh it helps the agent stay focused. Second, you created a file tool to offload context. LLM performance can degrade when there's too much or conflicting information in context. For example, in the last lab you stored raw tool call observations in a file rather than returning them to the supervisor agent.
+
+This kept the supervisor's context smaller and more focused. Third, you also generated subagents, which have a [00:01:00] few advantages. They get their own context free of distractions. They can use a small set of specialized tools with clear instructions. And the tasks you give them can be tightly focused. You can even run many subagents in parallel.
+
+While this is inefficient in terms of tokens, it speeds up tasks like research that involve many independent threads. So the main thing to understand about subagents is that they let you go deeper in specific areas by preserving context, narrowing focus, and applying specialized expertise. And fourth and finally, you generated detailed prompts.
+
+I think a common misconception is that because the models are so good, you can write a pretty short system prompt, and that's not at all the case. You need to give a bunch of context on how to use these tools like the todo list tool and the file system tools and the subagents. You also need to give it information about the task that it's trying to do.
+
+I think the underappreciated thing here is that prompting absolutely still matters, and the developers of all the best deep agents are spending a [00:02:00] ton of time writing system prompts that are hundreds, if not thousands of lines long. So planning, files, subagents and prompts are the keys to deep agents, the ideas Lance has been covering throughout this course. 
+
+Now I've created a repo with many of these things implemented for you. The course was based on this repo, so most of it should be very familiar to you now. It should serve as a quick and easy way to incorporate deep agents into your next project.
+
+The ReadMe file contains instructions to help you get started and there's a pointer to the repo in the resources section of this lesson. This is an open source effort, so please use and extend deep agents. We love working with contributors. Many of the folks at LangChain started out by extending one of our open source libraries.
+
+Deep Agents also has an open source user interface. The resource page also contains links to that repo and links to some short videos that describe how to use it. Check those out as well. It's a useful interface and we'll be improving it over [00:03:00] time.
+
+We're looking forward to seeing how you can extend these Deep Agents and use these techniques to build mission critical agents. 
+
+
+
+=============================================
+File: LCA-DAFS-Marketing-V1.txt
+=============================================
+
+[00:00:00] Anthropic's Claude code, OpenAI's deep researcher and Manus's general purpose agent have demonstrated that agents can be amazingly effective on complex long running tasks. We call these deep agents because they have a few key differentiators from earlier forms of agents. In our new LangChain Academy course, Deep Agents with LangGraph, you'll learn their key characteristics and how to implement them in your own deep agent.
+
+So what makes these agents different? Under the hood, they use a simple ReAct tool calling loop. The agent makes an LLM call and then based on the output either stops or makes the tool call and then incorporates that feedback into the loop. Use naively, LLMs can handle a few tool calls well, but they struggle to stay effective over longer time horizons.
+
+What sets deep agents apart are four key features. Planning, a file system, subagents and prompting. [00:01:00] First, planning forces the agent to reason across multiple steps. Keeping the plan in context and occasionally rewriting it helps the agent stay on task. Second, a file system enables the agent to offload context, keeping its working input free of clutter and conflicting information.
+
+Third, subagents can operate within a clean context with a provided set of tools on a focused topic and provide the supervisor agent with a summary of what it's done. And fourth, prompting plays a major role. Many of these agents rely on high quality system prompts that are hundreds or even thousands of lines long.
+
+You'll dive into each of these concepts as you build your own deep agent with LangGraph our agent orchestration framework. LangGraph makes it easy to build agentic applications and is especially effective for the complex workflows required to build a deep agent. By the end of this course, you'll have the [00:02:00] skills to design and deploy your own deep agent for complex tasks.
+
+I look forward to seeing you in the course.
+
+
