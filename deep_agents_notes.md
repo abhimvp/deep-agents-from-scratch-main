@@ -484,3 +484,39 @@ Notebook 3 implements context isolation through a subagent registry and dynamic 
     2. Under the hood, the coordinator intercepts the tool call, initializes the isolated context, and executes the research subagent.
     3. The research subagent calls `web_search`, gets the result, and formats its final report.
     4. The supervisor receives only the final research report back as a `ToolMessage` and answers the user.
+
+---
+
+### 📌 Deep Dive 13: Module 6, Lesson 4 — Putting it Together: The Deep Research Agent
+
+#### 1. Lesson Summary (`LCA-DAFS-M6-L4-V1-FullAgent.txt`)
+
+This lesson brings together all the foundational concepts of the course—**Planning (ToDos)**, **Context Offloading (Files)**, **Context Isolation (Subagents)**, and **Rich Prompting**—into a single, production-grade Deep Research Agent.
+
+* **The Concept**: Build an end-to-end research agent using real tools (e.g. Tavily search client).
+* **The Raw Observation Bottleneck**: Standard search returns massive HTML text block summaries and URLs. Putting this directly into the conversation history would quickly blow up the context window.
+* **The Workaround (Manus style)**:
+  1. Retrieve search results (e.g., from Tavily).
+  2. Read and convert HTML pages to clean markdown using `markdownify`.
+  3. Store the full markdown content as a file in the virtual filesystem (offloading).
+  4. Call a secondary model (e.g., `gpt-4o-mini`) to summarize each page and generate a clean filename.
+  5. Return only a list of short summaries and filenames to the main agent's context.
+* **The Think Tool**: An intentional, no-op reflection tool (`think_tool`). It forces the LLM to write down its current understanding, assess research gaps, and decide whether it needs to make further search queries or is ready to respond. This mirrors Anthropic's interleaved thinking mode.
+* **The `deepagents` Package**: The course repo bundles these patterns into a prebuilt pip package wrapper `deepagents`, providing the file tools, ToDo tool, and task tool out of the box so developers only need to specify their use-case prompts and subagent tools.
+
+#### 2. Notebook Summary (`4_full_agent.ipynb`)
+
+Notebook 4 implements this end-to-end system:
+
+* **Cell 4 (Code - `research_tools.py`)**:
+  * Writes the tools to `src/deep_agents_from_scratch/research_tools.py`.
+  * Configures `summarization_model` as `gpt-4o-mini` with structured output based on a Pydantic `Summary` schema (holding `filename` and `summary`).
+  * `tavily_search`: Executes search, processes pages (converts raw HTML to markdown), runs the summarizer on raw contents, saves raw files to `DeepAgentState["files"]`, and returns only a bulleted list of summaries to the LLM.
+  * `think_tool(reflection)`: A simple reflection placeholder.
+* **Cell 6 (Code - Setup & Manual Compilation)**:
+  * Defines the `research-agent` subagent configuration with `tavily_search` and `think_tool`.
+  * Compiles the supervisor agent using the supervisor prompts (`INSTRUCTIONS`), which combine ToDo management, file system usage, and subagent delegation instructions.
+* **Cell 10 (Code - Invocation Trace)**:
+  * Invokes the manually compiled agent. The trace shows the agent checking files (`ls`), writing request to file, planning `todos`, delegating to the `research-agent` subagent (which executes search, summarizes pages, offloads markdown files, and returns the summary), reflecting using the `think_tool`, marking tasks complete in the `todos` list, and replying.
+* **Cell 13 & 14 (Code - Using the `deepagents` Package)**:
+  * Demonstrates the wrapper approach: imports `create_deep_agent` from the local `deepagents` package, defines `research_sub_agent_2`, and compiles the agent in a single function call. Invoking this agent yields the exact same stateful trace behavior.

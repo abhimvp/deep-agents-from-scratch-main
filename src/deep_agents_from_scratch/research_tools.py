@@ -22,7 +22,8 @@ from deep_agents_from_scratch.prompts import SUMMARIZE_WEB_SEARCH
 from deep_agents_from_scratch.state import DeepAgentState
 
 # Summarization model 
-summarization_model = init_chat_model(model="openai:gpt-4o-mini")
+summarization_model = init_chat_model(model="gemini-2.5-flash-lite",  # Or gemini-1.5-flash
+    model_provider="google_genai")
 tavily_client = TavilyClient()
 
 class Summary(BaseModel):
@@ -32,8 +33,7 @@ class Summary(BaseModel):
 
 def get_today_str() -> str:
     """Get current date in a human-readable format."""
-    now = datetime.now()
-    return f"{now.strftime('%a %b')} {now.day}, {now.strftime('%Y')}"
+    return f"{datetime.now().strftime('%a %b')} {datetime.now().day}, {datetime.now().strftime('%Y')}"
 
 def run_tavily_search(
     search_query: str, 
