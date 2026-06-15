@@ -411,3 +411,35 @@ Notebook 1 (`1_todo.ipynb`) implements the **Stateful ToDo Planner Pattern** (in
 
 * **Cell 15 (Trace Reference)**:
   * **What it does**: Provides a public LangSmith trace link where you can inspect the step-by-step nested state updates, tool calls, and payload values in real-time.
+
+---
+
+### 📌 Deep Dive 11: Module 4, Lesson 2 — Context Offloading via Virtual Filesystems
+
+#### 1. Lesson Summary (`LCA-DAFS-M4-L2-V1-Files.txt`)
+
+This lesson focuses on **Context Offloading**, a key context engineering pattern used by state-of-the-art deep agents (like Manus, Hugging Face Open Deep Research, and Anthropic's research systems).
+
+* **The Problem**: Long-horizon agents with dozens of steps suffer from context bloat and decay if they load heavy raw outputs (e.g. database query outputs, large web pages, source files) directly into the LLM context window.
+* **The Solution**: Store raw observations in a virtual filesystem (sandboxed memory/disk) and only pass lightweight file references/summaries to the coordinator. The agent reads and processes sections of the file (via offset/limit windows) only when explicitly needed.
+* **State Integration**: In LangGraph, a simple virtual filesystem can be modeled as a dictionary in state mapping paths (`str`) to file content (`str`).
+* **State Merging (Reducers)**: Using a file reducer function allows incremental filesystem updates. When updating files, python unpacks `{**left, **right}` ensuring that duplicate keys in the update overwrite previous values while keeping other files intact.
+
+#### 2. Notebook Summary (`2_files.ipynb`)
+
+Notebook 2 implements this pattern using LangGraph `create_agent` (formerly `create_react_agent`).
+
+* **State Schema**: Subclasses `AgentState` to include `files: Annotated[NotRequired[dict[str, str]], file_reducer]` channel in `DeepAgentState`.
+* **The Virtual File System Tools**:
+  * `ls(state)`: Uses `InjectedState` to access `state["files"]` and returns the list of file paths.
+  * `write_file(file_path, content, state, tool_call_id)`: Saves data to state by returning a `Command` object which updates the `"files"` dictionary and writes a `ToolMessage` confirmation.
+  * `read_file(file_path, state, offset, limit)`: Uses `InjectedState` to fetch file content, splits it into lines, applies offset/limit windows, prefixes lines with numbers (for the LLM's prompt reference), and returns it.
+* **Agent Behavior & Run Trace**:
+  * The agent is given strict instructions to **Orient** (call `ls`), **Save** (write user request to file), and **Read** (fetch request back before outputting the final answer).
+  * **Trace sequence**:
+    1. Human asks for an overview of MCP.
+    2. Agent runs `ls` to check the environment.
+    3. Agent saves the customer request by calling `write_file` (creates `user_request.txt`).
+    4. Agent searches the web via `web_search`.
+    5. Agent calls `read_file` on `user_request.txt` to align back on the original customer constraints.
+    6. Agent writes the final response.
