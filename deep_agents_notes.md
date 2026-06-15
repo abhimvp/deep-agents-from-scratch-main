@@ -443,3 +443,44 @@ Notebook 2 implements this pattern using LangGraph `create_agent` (formerly `cre
     4. Agent searches the web via `web_search`.
     5. Agent calls `read_file` on `user_request.txt` to align back on the original customer constraints.
     6. Agent writes the final response.
+
+---
+
+### 📌 Deep Dive 12: Module 5, Lesson 3 — Context Isolation & Subagent Delegation
+
+#### 1. Lesson Summary (`LCA-DAFS-M5-L3-V1-Subagents.txt`)
+
+This lesson introduces **Context Isolation** by delegating complex tasks to specialized **Subagents**.
+
+* **The Problem**: Giving a single, flat agent too many tools or too much raw text results in cognitive overload, tool hallucinations, and dilution of rules.
+* **The Solution**: Subagents operate independently within their own sandboxed context windows. The parent supervisor agent only calls the subagent as a tool and receives only its final text response.
+* **Implementation Pattern**:
+  1. **Define Subagent Spec**: Name, description, system prompt, and subset of tools.
+  2. **Compile Subagents**: Compile each subagent separately using `create_agent` with their specialized tools and instructions.
+  3. **Delegation Tool**: Build a coordinator tool `task(description, subagent_type)` that maps to the subagent registry. Inside the tool, create a fresh message sequence with just the task description, invoke the subagent, and return a `Command` object wrapping the subagent's final message as a `ToolMessage` and merging any virtual filesystem modifications back up to the parent.
+
+#### 2. Notebook Summary (`3_subagents.ipynb`)
+
+Notebook 3 implements context isolation through a subagent registry and dynamic task routing tools.
+
+* **Cell 5 (Code - `task_tool.py`)**:
+  * Writes the helper `_create_task_tool(...)` to `src/deep_agents_from_scratch/task_tool.py`.
+  * Builds a tool mapping `tools_by_name` to selectively distribute tools to subagents.
+  * Loops over subagent configurations and compiles each using `create_agent`.
+  * Exposes a `@tool` called `task(description, subagent_type, state, tool_call_id)` to the main supervisor.
+  * When `task(...)` is called:
+    1. Validates that the requested `subagent_type` exists.
+    2. Overwrites `state["messages"]` with only the fresh user instruction (achieving true context isolation).
+    3. Runs `sub_agent.invoke(state)`.
+    4. Propagates any modified virtual files (`files`) back to the parent and returns the subagent's last AI message to the parent context as a `ToolMessage`.
+* **Cell 9 (Code - Setup & Execution)**:
+  * Defines a specialized `research_sub_agent` config: `"name": "research-agent"`, `"prompt": SIMPLE_RESEARCH_INSTRUCTIONS`, and registered tools: `["web_search"]`.
+  * Compiles the research subagent and hooks it into the supervisor's `task_tool`.
+  * Compiles the supervisor agent using `create_agent` with the `task_tool` as its only active tool.
+* **Cell 10 (Code - Invocation Trace)**:
+  * Invokes the supervisor with: *"Give me an overview of Model Context Protocol (MCP)."*
+  * **Trace sequence**:
+    1. Supervisor sees the request and calls `task(description="Research Model Context Protocol (MCP)", subagent_type="research-agent")`.
+    2. Under the hood, the coordinator intercepts the tool call, initializes the isolated context, and executes the research subagent.
+    3. The research subagent calls `web_search`, gets the result, and formats its final report.
+    4. The supervisor receives only the final research report back as a `ToolMessage` and answers the user.

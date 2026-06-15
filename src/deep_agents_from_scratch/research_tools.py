@@ -32,7 +32,8 @@ class Summary(BaseModel):
 
 def get_today_str() -> str:
     """Get current date in a human-readable format."""
-    return datetime.now().strftime("%a %b %-d, %Y")
+    now = datetime.now()
+    return f"{now.strftime('%a %b')} {now.day}, {now.strftime('%Y')}"
 
 def run_tavily_search(
     search_query: str, 
